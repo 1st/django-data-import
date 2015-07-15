@@ -1,0 +1,81 @@
+{% extends "admin/django_data_import/base.html" %}
+{% load url from future %}
+{% load i18n %}
+{% load admin_urls %}
+
+
+{% block breadcrumbs_last %}
+{% trans "Import" %}
+{% endblock %}
+
+
+{% block content %}
+  <h1>{% trans "Data import" %}</h1>
+
+  {% if confirm_form %}
+    <form action="" method="POST">
+      {% csrf_token %}
+
+      <p>
+        {% trans "Below is a preview of data to be imported. If you are satisfied with the results, click 'Confirm import'" %}
+      </p>
+
+      <fieldset class="module aligned">
+        {% for field in confirm_form %}
+          {% include "admin/django_data_import/form_field.html" with field=field %}
+        {% endfor %}
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" name="try_again" value="{% trans 'Try again' %}">
+        <input type="submit" class="default" name="save_data" value="{% trans 'Confirm import' %}">
+      </div>
+    </form>
+
+  {% else %}
+    <form action="" method="POST" enctype="multipart/form-data">
+      {% csrf_token %}
+
+      <p>
+        {% trans "These fields will be imported from CSV file:" %}
+        <code>{{ fields|join:', ' }}</code>
+      </p>
+
+      <fieldset class="module aligned">
+        {% for field in form %}
+          {% include "admin/django_data_import/form_field.html" with field=field %}
+        {% endfor %}
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" class="default" value="{% trans 'Submit' %}">
+      </div>
+    </form>
+  {% endif %}
+
+  {% if result %}
+    <h2>{% trans "Preview" %}</h2>
+
+    <table>
+      <thead>
+        <tr>
+          {% for field in fields %}
+            <th>{{ field }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result %}
+        <tr>
+          {% for field in row.values %}
+          <td>
+            {{ field|default:'-' }}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+{% endblock %}
