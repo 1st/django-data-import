@@ -22,12 +22,39 @@
 
       <fieldset class="module aligned">
         {% for field in confirm_form %}
-          {% include "admin/django_data_import/form_field.html" with field=field %}
+          {% include "admin/django_data_import/form_field.html" with field=field readonly=1 %}
         {% endfor %}
       </fieldset>
 
+      <fieldset class="module aligned">
+        {% if import_formset %}
+          <table width="100%">
+            <thead>
+              <tr>
+              {% for field in import_formset.0.fields %}
+                <th>{{ field }}</th>
+              {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+            {% for import_form in import_formset %}
+              <tr class="row{% cycle '1' '2' %}">
+              {% for field in import_form %}
+                <td>
+                  {{field}}
+                </td>
+              {% endfor %}
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </fieldset>
+
+      {{ import_formset.management_form }}
+
       <div class="submit-row">
-        <input type="submit" name="try_again" value="{% trans 'Try again' %}">
+        <a href="" class="button" style="line-height: 24px">{% trans 'Try again' %}</a>
         <input type="submit" class="default" name="save_data" value="{% trans 'Confirm import' %}">
       </div>
     </form>
@@ -51,31 +78,6 @@
         <input type="submit" class="default" value="{% trans 'Submit' %}">
       </div>
     </form>
-  {% endif %}
-
-  {% if result %}
-    <h2>{% trans "Preview" %}</h2>
-
-    <table>
-      <thead>
-        <tr>
-          {% for field in fields %}
-            <th>{{ field }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in result %}
-        <tr>
-          {% for field in row.values %}
-          <td>
-            {{ field|default:'-' }}
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
   {% endif %}
 
 {% endblock %}

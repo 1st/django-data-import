@@ -1,7 +1,5 @@
 from __future__ import absolute_import
 from __future__ import with_statement
-import tempfile
-import os.path
 import csv
 import django
 from django.utils.translation import ugettext_lazy as _
@@ -11,7 +9,7 @@ from django.core.urlresolvers import reverse
 from django.db import IntegrityError
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
-from .forms import ImportForm, ConfirmImportForm
+from .forms import ImportForm, ConfirmImportForm, get_model_form, get_model_formset
 
 
 class ImportDataMixin(object):
@@ -37,52 +35,44 @@ class ImportDataMixin(object):
         """
         Custom end-point to import CSV file.
 
-        Here we show form to select file and process this file.
+        Here we show form to select file and save data to database.
         """
         context = {}
         save_data = request.POST.get('save_data', False)
-        try_again = request.POST.get('try_again', False)
         form = ImportForm(request.POST or None, request.FILES or None)
+        model_fields = self._get_field_names()
 
         if save_data:
-            self._save_data(request)
+            import_form = get_model_form(self.model, fields=model_fields)
+            import_formset = get_model_formset(import_form, request.POST)
+
+            created_counter = 0
+            for import_form in import_formset:
+                try:
+                    if import_form.is_valid():
+                        import_form.save()
+                        created_counter += 1
+                except (IntegrityError, TypeError):
+                    pass
+
+            success_message = _('Imported {} rows'.format(created_counter))
+            messages.success(request, success_message)
+
             url = reverse(
                 'admin:%s_%s_changelist' % self._get_model_info(),
                 current_app=self.admin_site.name
             )
             return HttpResponseRedirect(url)
 
-        elif try_again:
-            confirm_form = ConfirmImportForm({
-                'import_file_name': request.POST.get('import_file_name'),
-                'delimiter': request.POST.get('delimiter'),
-            })
-            if confirm_form.is_valid():
-                import_file_name = os.path.join(
-                    tempfile.gettempdir(),
-                    confirm_form.cleaned_data['import_file_name']
-                )
-                context['result'] = self._read_csv_file(
-                    import_file_name,
-                    delimiter=str(confirm_form.cleaned_data['delimiter'])
-                )
-            context['confirm_form'] = confirm_form
-
         elif request.method == 'POST' and form.is_valid():
             import_file = form.cleaned_data['import_file']
             delimiter = str(form.cleaned_data['delimiter'])
 
-            # first always write the uploaded file to disk as it may be a
-            # memory file or else based on settings upload handlers
-            with tempfile.NamedTemporaryFile(delete=False) as uploaded_file:
-                for chunk in import_file.chunks():
-                    uploaded_file.write(chunk)
-
-            # then read the file, using the proper format-specific mode
-            context['result'] = self._read_csv_file(uploaded_file.name, delimiter=delimiter)
+            csv_data = self._read_csv_file(import_file, delimiter=delimiter)
+            import_form = get_model_form(self.model, fields=model_fields)
+            context['import_formset'] = get_model_formset(import_form, initial=csv_data)
 
             context['confirm_form'] = ConfirmImportForm(initial={
-                'import_file_name': os.path.basename(uploaded_file.name),
                 'delimiter': form.cleaned_data['delimiter'],
             })
 
@@ -93,7 +83,7 @@ class ImportDataMixin(object):
 
         context['form'] = form
         context['opts'] = self.model._meta
-        context['fields'] = self._get_field_names()
+        context['fields'] = model_fields
 
         return TemplateResponse(
             request,
@@ -117,37 +107,5 @@ class ImportDataMixin(object):
         """
         Return list of dicts from given CSV file.
         """
-        with open(filename) as csvfile:
-            reader = csv.DictReader(csvfile, delimiter=delimiter, fieldnames=self._get_field_names())
-            return list(reader)
-
-    def _save_data(self, request):
-        """
-        Save data from CSV file to current model.
-        """
-        confirm_form = ConfirmImportForm(request.POST)
-
-        if confirm_form.is_valid():
-            import_file_name = os.path.join(
-                tempfile.gettempdir(),
-                confirm_form.cleaned_data['import_file_name']
-            )
-            delimiter = str(confirm_form.cleaned_data['delimiter'])
-
-            rows = self._read_csv_file(import_file_name, delimiter=delimiter)
-            fields = self._get_field_names()
-
-            created_counter = 0
-
-            # insert only records with names that we have in model
-            for row in rows:
-                data = {name: row[name] for name in fields}
-                try:
-                    self.model.objects.create(**data)
-                    created_counter += 1
-                except (IntegrityError, TypeError):
-                    pass
-
-            success_message = _('Imported {} rows'.format(created_counter))
-            messages.success(request, success_message)
-            return True
+        reader = csv.DictReader(filename, delimiter=delimiter, fieldnames=self._get_field_names())
+        return list(reader)
